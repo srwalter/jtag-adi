@@ -325,6 +325,10 @@ where
         Ok(())
     }
 
+    /// Optimized implementation for reading the DCC register.  This reads the DSCR followed by
+    /// DTR.  If `check_fifo` is false, then the read result of DSCR is ignored.  This improves
+    /// performance slightly, but may result in reading DTR when no value is present (in practice
+    /// this seems to result in the same value being returned as the previous read).
     pub fn read_dcc(&mut self, debug_base: u32, check_fifo: bool) -> Result<Option<u32>, u8> {
         // Enable auto-increment mode
         self.write_csw(self.csw | (1 << 4))?;
