@@ -2,6 +2,9 @@
 name = "jtag-adi"
 version = "0.1.0"
 edition = "2021"
+description = "Library for interacting with ARM Debug Interface components"
+license = "MIT"
+repository = "https://github.com/srwalter/jtag-adi"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
