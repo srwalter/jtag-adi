@@ -75,14 +75,16 @@ where
         Ok((val >> 3) as u32)
     }
 
-    /// Read register `reg` from `port`.  This function assumes that the correct bank is already
-    /// selected.  You probably want `read_adi` unless you know what you're doing.
-    pub fn read_adi_nobank(&mut self, port: Port, reg: u8) -> Result<u32, u8> {
+    pub fn queue_read_adi_nobank(&mut self, port: Port, reg: u8) -> bool {
         let ir = [port as u8];
         self.write_ir(&ir);
         let buf = [(reg << 1) | 1, 0, 0, 0, 0];
         self.taps.write_dr(&buf, 3);
-        let mut dr = self.taps.read_dr(35);
+        self.taps.queue_dr_read(35)
+    }
+
+    pub fn finish_read(&mut self) -> Result<u32, u8> {
+        let mut dr = self.taps.finish_dr_read(35);
 
         dr.push(0);
         dr.push(0);
@@ -97,6 +99,14 @@ where
 
         let val = (val >> 3) as u32;
         Ok(val)
+    }
+
+    /// Read register `reg` from `port`.  This function assumes that the correct bank is already
+    /// selected.  You probably want `read_adi` unless you know what you're doing.
+    pub fn read_adi_nobank(&mut self, port: Port, reg: u8) -> Result<u32, u8> {
+        let result = self.queue_read_adi_nobank(port, reg);
+        assert!(result);
+        self.finish_read()
     }
 
     /// Write `val` to register `reg` on `port`.  This function assumes that the correct bank is already
@@ -159,6 +169,14 @@ where
         reg &= 3;
         self.bank_select(apsel, bank as u32, 0);
         self.read_adi_nobank(port, reg)
+    }
+
+    /// Read register `reg` from AP `apsel` and `port`.
+    pub fn queue_read_adi(&mut self, apsel: u32, port: Port, mut reg: u8) -> bool {
+        let bank = reg >> 2;
+        reg &= 3;
+        self.bank_select(apsel, bank as u32, 0);
+        self.queue_read_adi_nobank(port, reg)
     }
 
     /// Write `val` to register `reg` of AP `apsel` and `port`.
@@ -304,6 +322,26 @@ where
         if stat & 5 != 0 {
             return Err(5);
         }
+        Ok(val)
+    }
+
+    pub fn queue_read(&mut self, addr: u32) -> Result<bool, u8> {
+        self.adi
+            .borrow_mut()
+            .write_adi_nocheck(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+
+        let val = self
+            .adi
+            .borrow_mut()
+            .queue_read_adi(self.apsel, Port::AP, MemAPReg::DRW as u8);
+        if !val {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    pub fn finish_read(&mut self) -> Result<u32, u8> {
+        let val = self.adi.borrow_mut().finish_read()?;
         Ok(val)
     }
 
