@@ -41,11 +41,14 @@ where
             lastir: vec![],
         };
 
+        // Abort any in-progress transactions
+        adi.write_adi_nobank(Port::DP, DPReg::Abort as u8, 0, true).expect("abort");
+
         // Make sure everything is powered up and STICKY errors are cleared
         adi.write_adi_nobank(
             Port::DP,
             DPReg::CtrlStat as u8,
-            1 << 30 | 1 << 28 | 1 << 5 | 1 << 1,
+            1 << 30 | 1 << 28 | 1 << 24 | 1 << 5 | 1 << 1,
             true,
         )
         .expect("clear errors");
