@@ -282,6 +282,7 @@ pub struct MemAP<T> {
     adi: Rc<RefCell<ArmDebugInterface<T>>>,
     apsel: u32,
     csw: u32,
+    tar: u32,
 }
 
 impl<T, U> MemAP<T>
@@ -294,7 +295,11 @@ where
             .borrow_mut()
             .read_adi(apsel, Port::AP, MemAPReg::CSW as u8)
             .expect("read csw");
-        Self { adi, apsel, csw }
+        let tar = adi
+            .borrow_mut()
+            .read_adi(apsel, Port::AP, MemAPReg::TAR as u8)
+            .expect("read tar");
+        Self { adi, apsel, csw, tar }
     }
 
     /// Set the control and status word of the MemAP.  `MemAP` caches the value of this register,
@@ -311,9 +316,14 @@ where
 
     /// Read a single 32-bit quantity from `addr`
     pub fn read(&mut self, addr: u32) -> Result<u32, u8> {
-        self.adi
-            .borrow_mut()
-            .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+        // Make sure we're not in auto-increment mode
+        self.write_csw(self.csw & !(1 << 4))?;
+        if self.tar != addr {
+            self.adi
+                .borrow_mut()
+                .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+            self.tar = addr;
+        }
         let val = self
             .adi
             .borrow_mut()
@@ -329,9 +339,14 @@ where
     }
 
     pub fn queue_read(&mut self, addr: u32) -> Result<bool, u8> {
-        self.adi
-            .borrow_mut()
-            .write_adi_nocheck(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+        // Make sure we're not in auto-increment mode
+        self.write_csw(self.csw & !(1 << 4))?;
+        if self.tar != addr {
+            self.adi
+                .borrow_mut()
+                .write_adi_nocheck(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+            self.tar = addr;
+        }
 
         let val = self
             .adi
@@ -350,9 +365,14 @@ where
 
     /// Write `value` to `addr`
     pub fn write(&mut self, addr: u32, value: u32) -> Result<(), u8> {
-        self.adi
-            .borrow_mut()
-            .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+        // Make sure we're not in auto-increment mode
+        self.write_csw(self.csw & !(1 << 4))?;
+        if self.tar != addr {
+            self.adi
+                .borrow_mut()
+                .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+            self.tar = addr;
+        }
         self.adi
             .borrow_mut()
             .write_adi(self.apsel, Port::AP, MemAPReg::DRW as u8, value)?;
@@ -377,6 +397,7 @@ where
         let mut adi = self.adi.borrow_mut();
         adi.write_adi_nocheck(self.apsel, Port::AP, MemAPReg::TAR as u8, debug_base + 0x88)
             .expect("write tar");
+        self.tar = debug_base + 0x88;
 
         let port = Port::AP;
         let mut drw = MemAPReg::DRW as u8;
@@ -421,9 +442,12 @@ where
         // Enable auto-increment mode
         self.write_csw(self.csw | (1 << 4))?;
 
-        self.adi
-            .borrow_mut()
-            .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+        if self.tar != addr {
+            self.adi
+                .borrow_mut()
+                .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+            self.tar = addr + 4 * len as u32;
+        }
 
         let reg = vec![MemAPReg::DRW as u8; len];
         let val = self
@@ -450,9 +474,12 @@ where
         // Enable auto-increment mode
         self.write_csw(self.csw | (1 << 4))?;
 
-        self.adi
-            .borrow_mut()
-            .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+        if self.tar != addr {
+            self.adi
+                .borrow_mut()
+                .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+            self.tar = addr + 4 * data.len() as u32;
+        }
 
         let reg: Vec<(u8, u32)> = data.iter().map(|x| (MemAPReg::DRW as u8, *x)).collect();
         self.adi
