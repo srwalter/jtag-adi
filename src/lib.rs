@@ -399,50 +399,6 @@ where
         Ok(())
     }
 
-    /// Optimized implementation for reading the DCC register.  This reads the DSCR followed by
-    /// DTR.  If `check_fifo` is false, then the read result of DSCR is ignored.  This improves
-    /// performance slightly, but may result in reading DTR when no value is present (in practice
-    /// this seems to result in the same value being returned as the previous read).
-    pub fn read_dcc(&mut self, debug_base: u32, check_fifo: bool) -> Result<Option<u32>, u8> {
-        // Enable auto-increment mode
-        self.write_csw(self.csw | (1 << 4))?;
-
-        let mut adi = self.adi.borrow_mut();
-        adi.write_adi_nocheck(self.apsel, Port::AP, MemAPReg::TAR as u8, debug_base + 0x88)
-            .expect("write tar");
-        self.tar = debug_base + 0x88;
-
-        let port = Port::AP;
-        let mut drw = MemAPReg::DRW as u8;
-
-        // Make sure we have the right bank
-        let bank = drw >> 2;
-        drw &= 3;
-        adi.bank_select(1, bank as u32, 0);
-
-        let ir = [port as u8];
-        adi.write_ir(&ir);
-
-        // Read DRW twice.  At least the Cortex-R4 requires that a read to DSCR occur before data
-        // in the DTR gets updated, so we have to issue the read even if when !check_fifo (but we
-        // can ignore the result)
-        let buf = [(drw << 1) | 1, 0, 0, 0, 0];
-        adi.taps.write_dr(&buf, 3);
-        if check_fifo {
-            let dr = adi.taps.read_write_dr(&buf, 3);
-            let dscr = ArmDebugInterface::<T>::parse_ack(dr)?;
-            if dscr & (1 << 29) == 0 {
-                // FIFO empty
-                return Ok(None);
-            }
-        } else {
-            adi.taps.write_dr(&buf, 3);
-        }
-
-        let dr = adi.taps.read_dr(35);
-        Ok(Some(ArmDebugInterface::<T>::parse_ack(dr)?))
-    }
-
     /// Read multiple values from memory.  If `check_status` is true, then the CTRL/STAT
     /// register is checked for errors at the end of the transaction, which comes with a slight
     /// performance penalty.  If `auto_increment` is true, then each value will come from the next
