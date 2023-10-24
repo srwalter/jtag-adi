@@ -443,30 +443,49 @@ where
         Ok(Some(ArmDebugInterface::<T>::parse_ack(dr)?))
     }
 
-    /// Read multiple consective values from memory.  If `check_status` is true, then the CTRL/STAT
+    /// Read multiple values from memory.  If `check_status` is true, then the CTRL/STAT
     /// register is checked for errors at the end of the transaction, which comes with a slight
-    /// performance penalty.
-    pub fn read_block(
+    /// performance penalty.  If `auto_increment` is true, then each value will come from the next
+    /// sequential address, otherwise every read is from `addr`
+    pub fn read_multi(
         &mut self,
         addr: u32,
-        len: usize,
+        count: usize,
+        auto_increment: bool,
         check_status: bool,
     ) -> Result<Vec<u32>, u8> {
         // Enable auto-increment mode
-        self.write_csw(self.csw | (1 << 4))?;
+        if auto_increment {
+            self.write_csw(self.csw | (1 << 4))?;
+        } else {
+            self.write_csw(self.csw & !(1 << 4))?;
+        }
 
         if self.tar != addr {
             self.adi
                 .borrow_mut()
                 .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
-            self.tar = addr + 4 * len as u32;
+            self.tar = addr;
+            if auto_increment {
+                self.tar += 4 * count as u32;
+            }
         }
 
-        let reg = vec![MemAPReg::DRW as u8; len];
+        let reg = vec![MemAPReg::DRW as u8; count];
         let val = self
             .adi
             .borrow_mut()
-            .read_adi_pipelined(self.apsel, Port::AP, &reg)?;
+            .read_adi_pipelined(self.apsel, Port::AP, &reg);
+
+        // Since we are always reading from the same register, any WAIT acks can be dropped
+        let mut result = vec![];
+        for item in val {
+            match item {
+                Ok(x) => result.push(x),
+                Err(1) => continue,
+                Err(e) => return Err(e),
+            }
+        }
 
         if check_status {
             let stat =
@@ -477,8 +496,21 @@ where
                 return Err(5);
             }
         }
-        Ok(val)
+        Ok(result)
     }
+
+    /// Read multiple consective values from memory.  If `check_status` is true, then the CTRL/STAT
+    /// register is checked for errors at the end of the transaction, which comes with a slight
+    /// performance penalty.
+    pub fn read_block(
+        &mut self,
+        addr: u32,
+        count: usize,
+        check_status: bool,
+    ) -> Result<Vec<u32>, u8> {
+        self.read_multi(addr, count, true, check_status)
+    }
+
 
     /// Write `data` starting at `addr`.  If `check_status` is true, then the CTRL/STAT
     /// register is checked for errors at the end of the transaction, which comes with a slight
