@@ -213,7 +213,7 @@ where
         apsel: u32,
         port: Port,
         reg: &[u8],
-    ) -> Result<Vec<u32>, u8> {
+    ) -> Vec<Result<u32, u8>> {
         let bank = reg[0] >> 2;
         self.bank_select(apsel, bank as u32, 0);
 
@@ -222,18 +222,31 @@ where
         let buf = [((reg[0] & 3) << 1) | 1, 0, 0, 0, 0];
         self.taps.write_dr(&buf, 3);
 
-        let mut result = vec![];
+        let mut count = 0;
+        let mut queue_full = false;
         for r in &reg[1..] {
             // Make sure all registers are in the same bank
             assert_eq!(r >> 2, reg[0] >> 2);
             let buf = [((r & 3) << 1) | 1, 0, 0, 0, 0];
-            let dr = self.taps.read_write_dr(&buf, 3);
-            result.push(Self::parse_ack(dr)?);
+            if !self.taps.queue_dr_read_write(&buf, 3) {
+                queue_full = true;
+                break;
+            }
+            count += 1;
         }
 
-        let dr = self.taps.read_dr(35);
-        result.push(Self::parse_ack(dr)?);
-        Ok(result)
+        if !queue_full {
+            if self.taps.queue_dr_read(35) {
+                count += 1;
+            }
+        }
+
+        let mut data = vec![];
+        for _ in 0..count {
+            data.push(Self::parse_ack(self.taps.finish_dr_read(35)));
+        }
+
+        data
     }
 
     /// Write multiple registers.  Each item of `reg` is a tuple consisting of the register address
