@@ -10,3 +10,4 @@ repository = "https://github.com/srwalter/jtag-adi"
 
 [dependencies]
 jtag-taps = "0.5"
+clap = {version="4.4.6", features=["derive"]}
