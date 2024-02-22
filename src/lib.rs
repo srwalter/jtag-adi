@@ -37,9 +37,12 @@ where
     pub fn new(taps: Taps<T>) -> Self {
         let mut adi = Self {
             taps,
-            lastbank: 0,
+            lastbank: 0xff,
             lastir: vec![],
         };
+
+        // Force bank selects to known values
+        adi.bank_select(0, 0, 0);
 
         // Abort any in-progress transactions
         adi.write_adi_nobank(Port::DP, DPReg::Abort as u8, 0, true).expect("abort");
