@@ -93,7 +93,7 @@ fn main() {
     assert_eq!(idcode, 0x6ba00477);
 
     let adi = Rc::new(RefCell::new(ArmDebugInterface::new(taps)));
-    let mut mem = MemAP::new(adi.clone(), 0);
+    let mut mem = MemAP::new(adi.clone(), args.ap_num);
 
     let cpu_base = parse_int(&args.cpu_base).expect("invalid cpu base");
     let edprsr = mem.read(cpu_base + 0x314).expect("read edprsr");
