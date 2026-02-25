@@ -402,6 +402,22 @@ where
         Ok(())
     }
 
+    /// Write `value` to `addr`
+    pub fn write_nocheck(&mut self, addr: u32, value: u32) -> Result<(), u8> {
+        // Make sure we're not in auto-increment mode
+        self.write_csw(self.csw & !(1 << 4))?;
+        if self.tar != addr {
+            self.adi
+                .borrow_mut()
+                .write_adi_nocheck(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+            self.tar = addr;
+        }
+        self.adi
+            .borrow_mut()
+            .write_adi_nocheck(self.apsel, Port::AP, MemAPReg::DRW as u8, value)?;
+        Ok(())
+    }
+
     /// Read multiple values from memory.  If `check_status` is true, then the CTRL/STAT
     /// register is checked for errors at the end of the transaction, which comes with a slight
     /// performance penalty.  If `auto_increment` is true, then each value will come from the next
