@@ -8,6 +8,7 @@ use jtag_taps::statemachine::JtagSM;
 use jtag_taps::taps::Taps;
 
 use jtag_adi::{ArmDebugInterface, MemAP};
+use jtag_adi::armv8::ARMv8;
 
 use clap::Parser;
 
@@ -29,44 +30,6 @@ struct Args {
     #[arg(long)]
     cti_base: String,
     command: Option<String>,
-}
-
-fn cpu_halt<T,U>(mem: &mut MemAP<T>, cti_base: u32)
-    where T: DerefMut<Target=U>,
-          U: Cable + ?Sized
-{
-    // Gate all
-    mem.write(cti_base + 0x140, 0).expect("write ctigate");
-
-    // Enable CTIOUTEN for channel 0
-    mem.write(cti_base + 0x0a0, 1).expect("write ctiouten");
-
-    // Generate HALT to core 0
-    mem.write(cti_base + 0x01c, 1).expect("write ctiouten");
-
-    // ACK the halt
-    mem.write(cti_base + 0x010, 3).expect("write ctiouten");
-    // Wait for ACK
-    while mem.read(cti_base + 0x134).unwrap() != 0 {}
-}
-
-fn cpu_resume<T,U>(mem: &mut MemAP<T>, cti_base: u32)
-    where T: DerefMut<Target=U>,
-          U: Cable + ?Sized
-{
-    // Gate all
-    mem.write(cti_base + 0x140, 0).expect("write ctigate");
-
-    // Enable CTIOUTEN for channel 1
-    mem.write(cti_base + 0x0a4, 2).expect("write ctiouten");
-
-    // Generate resume to core 0
-    mem.write(cti_base + 0x01c, 2).expect("write ctiouten");
-
-    // ACK the resume
-    mem.write(cti_base + 0x010, 3).expect("write ctiouten");
-    // Wait for ACK
-    while mem.read(cti_base + 0x134).unwrap() != 0 {}
 }
 
 fn parse_int(x: &str) -> Result<u32, ParseIntError> {
@@ -138,14 +101,16 @@ fn main() {
     println!("cti {:x}", cti);
     assert_eq!(cti & 1, 1);
 
+    let mut v8 = ARMv8::new(mem, cpu_base, cti_base);
+
     if let Some(cmd) = args.command {
         match cmd.as_str() {
-            "halt" => cpu_halt(&mut mem, cti_base),
-            "resume" => cpu_resume(&mut mem, cti_base),
+            "halt" => v8.cpu_halt(),
+            "resume" => v8.cpu_resume(),
             _ => eprintln!("Unknown command"),
         }
     }
 
-    let edscr = mem.read(cpu_base + 0x088).expect("read edscr");
+    let edscr = v8.read_cpu(0x088).expect("read edscr");
     println!("edscr {:x}", edscr);
 }

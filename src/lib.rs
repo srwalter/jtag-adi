@@ -9,6 +9,8 @@ use std::rc::Rc;
 use jtag_taps::cable::Cable;
 use jtag_taps::taps::Taps;
 
+pub mod armv8;
+
 /// Selects between Debug Port (DP) and Access Port (AP)
 pub enum Port {
     DP = 10,
