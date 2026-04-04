@@ -93,4 +93,9 @@ where
     {
         self.mem.read(self.cpu_base + offset)
     }
+
+    pub fn write_cpu(&mut self, offset: u32, value: u32) -> Result<(), u8>
+    {
+        self.mem.write(self.cpu_base + offset, value)
+    }
 }
