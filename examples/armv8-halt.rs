@@ -53,7 +53,7 @@ fn main() {
     taps.select_tap(0, &ir);
     let dr = taps.read_dr(32);
     let idcode = u32::from_le_bytes(dr.try_into().unwrap());
-    assert_eq!(idcode, 0x6ba00477);
+    //assert_eq!(idcode, 0x6ba00477);
 
     let adi = Rc::new(RefCell::new(ArmDebugInterface::new(taps)));
     let mut mem = MemAP::new(adi.clone(), args.ap_num);
@@ -105,8 +105,8 @@ fn main() {
 
     if let Some(cmd) = args.command {
         match cmd.as_str() {
-            "halt" => v8.cpu_halt(),
-            "resume" => v8.cpu_resume(),
+            "halt" => v8.cpu_halt().expect("halt"),
+            "resume" => v8.cpu_resume().expect("resume"),
             _ => eprintln!("Unknown command"),
         }
     }

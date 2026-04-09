@@ -71,10 +71,15 @@ where
         }
     }
 
+    pub fn run_instr(&mut self, instr: u32) -> Result<(), u8>
+    {
+        self.mem.write(self.cpu_base + 0x84, instr)?;
+        self.check_err()
+    }
+
     pub fn get_reg(&mut self, reg: u32) -> Result<u64, u8>
     {
-        self.mem.write(self.cpu_base + 0x84, 0xd5130400 | reg)?;
-        self.check_err()?;
+        self.run_instr(0xd5130400 | reg)?;
         let orig_x0 = self.mem.read_block(self.cpu_base + 0x80, 8, false)?;
         let orig_x0_hi = orig_x0[0] as u64;
         let orig_x0_lo = orig_x0[3] as u64;
@@ -91,8 +96,7 @@ where
         //// This seems to be needed on some A53 cores?
         self.mem.write(self.cpu_base + 0x090, 1 << 2).expect("write edrcr");
         // mrs x0, dbgdtr_el0
-        let _ = self.mem.write(self.cpu_base + 0x84, 0xd5330400 | reg)?;
-        self.check_err()
+        self.run_instr(0xd5330400 | reg)
     }
 
     pub fn read_cpu(&mut self, offset: u32) -> Result<u32, u8>
