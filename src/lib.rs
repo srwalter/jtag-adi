@@ -52,7 +52,7 @@ where
         // Make sure everything is powered up and STICKY errors are cleared
         adi.write_adi_nobank(
             Port::DP,
-            DPReg::CtrlStat as u8,
+            DPReg::CtrlStat as u32,
             1 << 30 | 1 << 28 | 1 << 24 | 1 << 5 | 1 << 1,
             true,
         )
@@ -83,10 +83,12 @@ where
         Ok((val >> 3) as u32)
     }
 
-    pub fn queue_read_adi_nobank(&mut self, port: Port, reg: u8) -> bool {
+    pub fn queue_read_adi_nobank(&mut self, port: Port, reg: u32) -> bool {
         let ir = [port as u8];
         self.write_ir(&ir);
-        let buf = [(reg << 1) | 1, 0, 0, 0, 0];
+        let mut buf = (reg << 1 | 1).to_le_bytes().to_vec();
+        buf.push(0);
+
         self.taps.write_dr(&buf, 3);
         self.taps.queue_dr_read(35)
     }
@@ -111,7 +113,7 @@ where
 
     /// Read register `reg` from `port`.  This function assumes that the correct bank is already
     /// selected.  You probably want `read_adi` unless you know what you're doing.
-    pub fn read_adi_nobank(&mut self, port: Port, reg: u8) -> Result<u32, u8> {
+    pub fn read_adi_nobank(&mut self, port: Port, reg: u32) -> Result<u32, u8> {
         let result = self.queue_read_adi_nobank(port, reg);
         assert!(result);
         self.finish_read()
@@ -139,7 +141,7 @@ where
     pub fn write_adi_nobank(
         &mut self,
         port: Port,
-        reg: u8,
+        reg: u32,
         val: u32,
         check: bool,
     ) -> Result<(), u8> {
@@ -180,14 +182,14 @@ where
     pub fn bank_select(&mut self, apsel: u32, apbank: u32, dpbank: u32) {
         let val = (apsel << 24) | (apbank << 4) | dpbank;
         if val != self.lastbank {
-            self.write_adi_nobank(Port::DP, DPReg::Select as u8, val, true)
+            self.write_adi_nobank(Port::DP, DPReg::Select as u32, val, true)
                 .expect("bank sel");
             self.lastbank = val;
         }
     }
 
     /// Read register `reg` from AP `apsel` and `port`.
-    pub fn read_adi(&mut self, apsel: u32, port: Port, mut reg: u8) -> Result<u32, u8> {
+    pub fn read_adi(&mut self, apsel: u32, port: Port, mut reg: u32) -> Result<u32, u8> {
         let bank = reg >> 2;
         reg &= 3;
         self.bank_select(apsel, bank as u32, 0);
@@ -195,7 +197,7 @@ where
     }
 
     /// Read register `reg` from AP `apsel` and `port`.
-    pub fn queue_read_adi(&mut self, apsel: u32, port: Port, mut reg: u8) -> bool {
+    pub fn queue_read_adi(&mut self, apsel: u32, port: Port, mut reg: u32) -> bool {
         let bank = reg >> 2;
         reg &= 3;
         self.bank_select(apsel, bank as u32, 0);
@@ -203,7 +205,7 @@ where
     }
 
     /// Write `val` to register `reg` of AP `apsel` and `port`.
-    pub fn write_adi(&mut self, apsel: u32, port: Port, mut reg: u8, val: u32) -> Result<(), u8> {
+    pub fn write_adi(&mut self, apsel: u32, port: Port, mut reg: u32, val: u32) -> Result<(), u8> {
         let bank = reg >> 2;
         reg &= 3;
         self.bank_select(apsel, bank as u32, bank as u32);
@@ -216,7 +218,7 @@ where
         &mut self,
         apsel: u32,
         port: Port,
-        mut reg: u8,
+        mut reg: u32,
         val: u32,
     ) -> Result<(), u8> {
         let bank = reg >> 2;
@@ -232,14 +234,16 @@ where
         &mut self,
         apsel: u32,
         port: Port,
-        reg: &[u8],
+        reg: &[u32],
     ) -> Vec<Result<u32, u8>> {
         let bank = reg[0] >> 2;
         self.bank_select(apsel, bank as u32, 0);
 
         let ir = [port as u8];
         self.write_ir(&ir);
-        let buf = [((reg[0] & 3) << 1) | 1, 0, 0, 0, 0];
+        let mut buf = ((reg[0] & 3) << 1 | 1).to_le_bytes().to_vec();
+        buf.push(0);
+
         self.taps.write_dr(&buf, 3);
 
         let mut count = 0;
@@ -247,7 +251,9 @@ where
         for r in &reg[1..] {
             // Make sure all registers are in the same bank
             assert_eq!(r >> 2, reg[0] >> 2);
-            let buf = [((r & 3) << 1) | 1, 0, 0, 0, 0];
+            let  mut buf = ((r & 3) << 1 | 1).to_le_bytes().to_vec();
+            buf.push(0);
+
             if !self.taps.queue_dr_read_write(&buf, 3) {
                 queue_full = true;
                 break;
@@ -276,7 +282,7 @@ where
         &mut self,
         apsel: u32,
         port: Port,
-        reg: &[(u8, u32)],
+        reg: &[(u32, u32)],
     ) -> Result<(), u8> {
         let bank = reg[0].0 >> 2;
         self.bank_select(apsel, bank as u32, 0);
