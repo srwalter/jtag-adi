@@ -12,14 +12,16 @@ use jtag_taps::taps::Taps;
 pub mod armv8;
 
 /// Selects between Debug Port (DP) and Access Port (AP)
+#[derive(Clone,Copy)]
 pub enum Port {
+    Abort = 8, // Only for ADIv5
     DP = 10,
     AP = 11,
 }
 
 /// Debug Port registers
 pub enum DPReg {
-    Abort = 0,
+    Abort = 0, // Also DpIdr in ADIv6
     CtrlStat = 1,
     Select = 2,
     Rdbuff = 3,
@@ -29,6 +31,8 @@ pub struct ArmDebugInterface<T> {
     taps: Taps<T>,
     lastbank: u32,
     lastir: Vec<u8>,
+    good_ack: u64,
+    pub version: u64,
 }
 
 impl<T, U> ArmDebugInterface<T>
@@ -41,13 +45,26 @@ where
             taps,
             lastbank: 0xff,
             lastir: vec![],
+            good_ack: 2,
+            version: 5,
         };
 
-        // Force bank selects to known values
-        adi.bank_select(0, 0, 0);
+        // Select bank 0.  Don't use bank_select() because we don't want error checking because we
+        // don't know what version we've got yet
+        let _ = adi.write_adi_nobank(Port::DP, DPReg::Select as u32, 0, false);
 
         // Abort any in-progress transactions
-        adi.write_adi_nobank(Port::DP, DPReg::Abort as u8, 0, true).expect("abort");
+        if let Err(4) = adi.read_adi_nobank(Port::DP, DPReg::Abort as u32) {
+            // Possibly ADIv6
+            adi.good_ack = 4;
+            let val = adi.read_adi_nobank(Port::DP, DPReg::Abort as u32).expect("abort");
+            let version = (val >> 12) & 0xf;
+            assert_eq!(version, 3);
+
+            // ADIv6 confirmed, so use the correct abort register
+            adi.version = 6;
+            adi.write_adi_nobank(Port::Abort, 0, 1, true).expect("abort");
+        }
 
         // Make sure everything is powered up and STICKY errors are cleared
         adi.write_adi_nobank(
@@ -68,7 +85,7 @@ where
         }
     }
 
-    fn parse_ack(mut dr: Vec<u8>) -> Result<u32, u8> {
+    fn parse_ack(mut dr: Vec<u8>, good_ack: u64) -> Result<u32, u8> {
         dr.push(0);
         dr.push(0);
         dr.push(0);
@@ -76,7 +93,7 @@ where
         let val = val & ((1 << 35) - 1);
 
         let ack = val & 7;
-        if ack != 2 {
+        if ack != good_ack {
             return Err(ack as u8);
         }
 
@@ -103,7 +120,7 @@ where
         let val = val & ((1 << 35) - 1);
 
         let ack = val & 7;
-        if ack != 2 {
+        if ack != self.good_ack {
             return Err(ack as u8);
         }
 
@@ -167,7 +184,7 @@ where
                 let val = val & ((1 << 35) - 1);
 
                 let ack = val & 7;
-                if ack == 2 {
+                if ack == self.good_ack {
                     return Ok(());
                 }
                 if ack == 1 {
@@ -269,7 +286,7 @@ where
 
         let mut data = vec![];
         for _ in 0..count {
-            data.push(Self::parse_ack(self.taps.finish_dr_read(35)));
+            data.push(Self::parse_ack(self.taps.finish_dr_read(35), self.good_ack));
         }
 
         data
@@ -330,6 +347,9 @@ where
     U: Cable + ?Sized,
 {
     pub fn new(adi: Rc<RefCell<ArmDebugInterface<T>>>, mut base: u32) -> Self {
+        if adi.borrow().version == 6 {
+            base += 0xd00;
+        }
         base = base >> 2;
         let csw = adi
             .borrow_mut()
