@@ -436,6 +436,9 @@ where
         self.adi
             .borrow_mut()
             .write_adi(0, Port::AP, MemAPReg::DRW as u32 + self.base, value)?;
+        if let Ok(_) = std::env::var("YOLO_MODE") {
+            return Ok(())
+        }
         let stat = self
             .adi
             .borrow_mut()

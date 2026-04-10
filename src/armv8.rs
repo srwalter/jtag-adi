@@ -61,6 +61,9 @@ where
 
     fn check_err(&mut self) -> Result<(), u8>
     {
+        if let Ok(_) = std::env::var("YOLO_MODE") {
+            return Ok(())
+        }
         let edscr = self.mem.read(self.cpu_base + 0x088)?;
         //println!("edscr {:x}", edscr);
         //println!("txu {:x}", edscr & (1 << 26));
