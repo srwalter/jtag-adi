@@ -5,7 +5,7 @@ use jtag_taps::cable::Cable;
 use crate::MemAP;
 
 pub struct ARMv8<T> {
-    mem: MemAP<T>,
+    pub mem: MemAP<T>,
     cpu_base: u32,
     cti_base: u32,
 }

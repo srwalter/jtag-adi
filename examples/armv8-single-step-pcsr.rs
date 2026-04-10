@@ -9,7 +9,6 @@ use jtag_taps::statemachine::JtagSM;
 use jtag_taps::taps::Taps;
 
 use jtag_adi::{ArmDebugInterface, MemAP};
-use jtag_adi::armv8::ARMv8;
 
 use clap::Parser;
 
@@ -94,10 +93,8 @@ fn main() {
 
     // Enable halting debug
     let mut edscr = mem.read(cpu_base + 0x088).expect("read edscr");
-    println!("edscr {:x}", edscr);
+    //println!("edscr {:x}", edscr);
     edscr |= 1 << 14;
-    // Make sure memory access mode is disabled
-    edscr &= !(1 << 20);
     mem.write(cpu_base + 0x088, edscr).expect("write edscr");
 
     //// Unlock CTI
@@ -113,63 +110,35 @@ fn main() {
     //println!("cti {:x}", cti);
     assert_eq!(cti & 1, 1);
 
+    let eddevid = mem.read(cpu_base + 0xfc8).expect("read edscr");
+    if eddevid & 7 == 0 {
+        eprintln!("CPU must support EDPCSR!");
+        return;
+    }
+
     // Must be in halt state
     cpu_halt(&mut mem, cti_base);
     // enable single step
     mem.write(cpu_base + 0x024, 1 << 2).expect("write edecr");
-    // clear sticky error bit
-    mem.write(cpu_base + 0x090, 1 << 2).expect("write edrcr");
-
-    let mut v8 = ARMv8::new(mem, cpu_base, cti_base);
-
-    // Read out any data that may already be in the DBGDTR so it doesn't overflow
-    loop {
-        let edscr = v8.read_cpu(0x088).expect("read edscr");
-        if edscr & (1 << 29) == 0 {
-            break;
-        }
-        println!("bit 29");
-        v8.read_cpu(0x08c).expect("read edscr");
-    }
-
-    // Same for the CPU direction, read DBGGTR_EL0 from the CPU
-    loop {
-        let edscr = v8.read_cpu(0x088).expect("read edscr");
-        if edscr & (1 << 30) == 0 {
-            break;
-        }
-        println!("bit 30");
-        // mrs x0, dbgdtr_el0
-        v8.run_instr(0xd5330400).expect("write EDITR");
-    }
-
-    // pull these writes out of the loop for performance
-    v8.mem.write(cti_base + 0x140, 0).expect("write ctigate");
-    v8.mem.write(cti_base + 0x0a4, 2).expect("write ctiouten");
 
     let start = Instant::now();
     let mut count = 0;
     loop {
-
-        // Save x0
-        let orig_x0 = v8.get_reg(0).expect("get x0");
-
-        // mrs x0, dlr_el0
-        v8.run_instr(0xd53b4520).expect("write EDITR");
-
-        let dlr = v8.get_reg(0).expect("get x0");
-        println!("dlr {:016x}", dlr);
-
-        // Restore x0
-        v8.set_reg(0, orig_x0).expect("set x0");
-
+        mem.queue_read(cpu_base + 0x0ac).expect("read edpcsr");
+        mem.queue_read(cpu_base + 0x0a0).expect("read edpcsr");
+        let pc_hi = mem.finish_read().expect("read edpcsr");
+        let pc_lo = mem.finish_read().expect("read edpcsr");
+        println!("pc {:x}{:x}", pc_hi, pc_lo);
         count += 1;
-        if count % 100 == 0 {
+        if count % 1000 == 0 {
             let delta = start.elapsed().as_millis();
             eprintln!("IPS {}", count * 1000 / delta);
         }
 
         // resume the CPU so it can run one instruction
-        v8.mem.write(cti_base + 0x01c, 2).expect("write ctiouten");
+        mem.write_nocheck(cti_base + 0x140, 0).expect("write ctigate");
+        mem.write_nocheck(cti_base + 0x0a4, 2).expect("write ctiouten");
+        mem.write_nocheck(cti_base + 0x01c, 2).expect("write ctiouten");
+        mem.write_nocheck(cti_base + 0x010, 3).expect("write ctiouten");
     }
 }
