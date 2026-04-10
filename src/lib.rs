@@ -117,6 +117,21 @@ where
         self.finish_read()
     }
 
+    pub fn read_adi_retry(&mut self, apsel: u32, port: Port, mut reg: u32) -> Result<u32, u8> {
+        let bank = reg >> 2;
+        reg &= 3;
+        self.bank_select(apsel, bank as u32, 0);
+        loop {
+            match self.read_adi_nobank(port, reg) {
+                Ok(x) => { return Ok(x); }
+                Err(1) => continue,
+                Err(e) => { return Err(e); }
+            }
+        };
+    }
+
+
+
     /// Write `val` to register `reg` on `port`.  This function assumes that the correct bank is already
     /// selected.  If `check` is true then the return code of the write will be verified, however
     /// this comes at a performance penalty. You probably want `write_adi` unless you know what
@@ -298,7 +313,7 @@ enum MemAPReg {
 /// Functions for interacting with a Memory Access Port
 pub struct MemAP<T> {
     adi: Rc<RefCell<ArmDebugInterface<T>>>,
-    apsel: u32,
+    base: u32,
     csw: u32,
     tar: u32,
 }
@@ -308,16 +323,17 @@ where
     T: DerefMut<Target = U>,
     U: Cable + ?Sized,
 {
-    pub fn new(adi: Rc<RefCell<ArmDebugInterface<T>>>, apsel: u32) -> Self {
+    pub fn new(adi: Rc<RefCell<ArmDebugInterface<T>>>, mut base: u32) -> Self {
+        base = base >> 2;
         let csw = adi
             .borrow_mut()
-            .read_adi(apsel, Port::AP, MemAPReg::CSW as u8)
+            .read_adi_retry(0, Port::AP, MemAPReg::CSW as u32 + base)
             .expect("read csw");
         let tar = adi
             .borrow_mut()
-            .read_adi(apsel, Port::AP, MemAPReg::TAR as u8)
+            .read_adi_retry(0, Port::AP, MemAPReg::TAR as u32 + base)
             .expect("read tar");
-        Self { adi, apsel, csw, tar }
+        Self { adi, base, csw, tar }
     }
 
     /// Set the control and status word of the MemAP.  `MemAP` caches the value of this register,
@@ -326,7 +342,7 @@ where
         if csw != self.csw {
             self.adi
                 .borrow_mut()
-                .write_adi(self.apsel, Port::AP, MemAPReg::CSW as u8, csw)?;
+                .write_adi(0, Port::AP, MemAPReg::CSW as u32 + self.base, csw)?;
             self.csw = csw;
         }
         Ok(())
@@ -339,17 +355,17 @@ where
         if self.tar != addr {
             self.adi
                 .borrow_mut()
-                .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+                .write_adi(0, Port::AP, MemAPReg::TAR as u32 + self.base, addr)?;
             self.tar = addr;
         }
         let val = self
             .adi
             .borrow_mut()
-            .read_adi(self.apsel, Port::AP, MemAPReg::DRW as u8)?;
+            .read_adi_retry(0, Port::AP, MemAPReg::DRW as u32 + self.base)?;
         let stat = self
             .adi
             .borrow_mut()
-            .read_adi(self.apsel, Port::DP, DPReg::CtrlStat as u8)?;
+            .read_adi_retry(0, Port::DP, DPReg::CtrlStat as u32)?;
         if stat & 5 != 0 {
             return Err(5);
         }
@@ -362,14 +378,14 @@ where
         if self.tar != addr {
             self.adi
                 .borrow_mut()
-                .write_adi_nocheck(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+                .write_adi_nocheck(0, Port::AP, MemAPReg::TAR as u32 + self.base, addr)?;
             self.tar = addr;
         }
 
         let val = self
             .adi
             .borrow_mut()
-            .queue_read_adi(self.apsel, Port::AP, MemAPReg::DRW as u8);
+            .queue_read_adi(0, Port::AP, MemAPReg::DRW as u32 + self.base);
         if !val {
             return Ok(false);
         }
@@ -388,16 +404,16 @@ where
         if self.tar != addr {
             self.adi
                 .borrow_mut()
-                .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+                .write_adi(0, Port::AP, MemAPReg::TAR as u32 + self.base, addr)?;
             self.tar = addr;
         }
         self.adi
             .borrow_mut()
-            .write_adi(self.apsel, Port::AP, MemAPReg::DRW as u8, value)?;
+            .write_adi(0, Port::AP, MemAPReg::DRW as u32 + self.base, value)?;
         let stat = self
             .adi
             .borrow_mut()
-            .read_adi(self.apsel, Port::DP, DPReg::CtrlStat as u8)?;
+            .read_adi_retry(0, Port::DP, DPReg::CtrlStat as u32)?;
         if stat & 5 != 0 {
             return Err(5);
         }
@@ -411,12 +427,12 @@ where
         if self.tar != addr {
             self.adi
                 .borrow_mut()
-                .write_adi_nocheck(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+                .write_adi_nocheck(0, Port::AP, MemAPReg::TAR as u32 + self.base, addr)?;
             self.tar = addr;
         }
         self.adi
             .borrow_mut()
-            .write_adi_nocheck(self.apsel, Port::AP, MemAPReg::DRW as u8, value)?;
+            .write_adi_nocheck(0, Port::AP, MemAPReg::DRW as u32 + self.base, value)?;
         Ok(())
     }
 
@@ -441,18 +457,18 @@ where
         if self.tar != addr {
             self.adi
                 .borrow_mut()
-                .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+                .write_adi(0, Port::AP, MemAPReg::TAR as u32 + self.base, addr)?;
             self.tar = addr;
             if auto_increment {
                 self.tar += 4 * count as u32;
             }
         }
 
-        let reg = vec![MemAPReg::DRW as u8; count];
+        let reg = vec![MemAPReg::DRW as u32 + self.base; count];
         let val = self
             .adi
             .borrow_mut()
-            .read_adi_pipelined(self.apsel, Port::AP, &reg);
+            .read_adi_pipelined(0, Port::AP, &reg);
 
         // Since we are always reading from the same register, any WAIT acks can be dropped
         let mut result = vec![];
@@ -468,7 +484,7 @@ where
             let stat =
                 self.adi
                     .borrow_mut()
-                    .read_adi(self.apsel, Port::DP, DPReg::CtrlStat as u8)?;
+                    .read_adi_retry(0, Port::DP, DPReg::CtrlStat as u32)?;
             if stat & 5 != 0 {
                 return Err(5);
             }
@@ -499,20 +515,20 @@ where
         if self.tar != addr {
             self.adi
                 .borrow_mut()
-                .write_adi(self.apsel, Port::AP, MemAPReg::TAR as u8, addr)?;
+                .write_adi(0, Port::AP, MemAPReg::TAR as u32 + self.base, addr)?;
             self.tar = addr + 4 * data.len() as u32;
         }
 
-        let reg: Vec<(u8, u32)> = data.iter().map(|x| (MemAPReg::DRW as u8, *x)).collect();
+        let reg: Vec<(u32, u32)> = data.iter().map(|x| (MemAPReg::DRW as u32 + self.base, *x)).collect();
         self.adi
             .borrow_mut()
-            .write_adi_pipelined(self.apsel, Port::AP, &reg)?;
+            .write_adi_pipelined(0, Port::AP, &reg)?;
 
         if check_status {
             let stat =
                 self.adi
                     .borrow_mut()
-                    .read_adi(self.apsel, Port::DP, DPReg::CtrlStat as u8)?;
+                    .read_adi_retry(0, Port::DP, DPReg::CtrlStat as u32)?;
             if stat & 5 != 0 {
                 return Err(5);
             }

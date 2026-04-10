@@ -1,9 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::ops::DerefMut;
 use std::num::ParseIntError;
 
-use jtag_taps::cable::{self, Cable};
+use jtag_taps::cable;
 use jtag_taps::statemachine::JtagSM;
 use jtag_taps::taps::Taps;
 
@@ -51,8 +50,8 @@ fn main() {
     // IDCODE instruction
     let ir = vec![14];
     taps.select_tap(0, &ir);
-    let dr = taps.read_dr(32);
-    let idcode = u32::from_le_bytes(dr.try_into().unwrap());
+    //let dr = taps.read_dr(32);
+    //let idcode = u32::from_le_bytes(dr.try_into().unwrap());
     //assert_eq!(idcode, 0x6ba00477);
 
     let adi = Rc::new(RefCell::new(ArmDebugInterface::new(taps)));
