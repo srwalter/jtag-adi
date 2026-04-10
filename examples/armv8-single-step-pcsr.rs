@@ -121,6 +121,10 @@ fn main() {
     // enable single step
     mem.write(cpu_base + 0x024, 1 << 2).expect("write edecr");
 
+    // pull these writes out of the loop for performance
+    mem.write_nocheck(cti_base + 0x140, 0).expect("write ctigate");
+    mem.write_nocheck(cti_base + 0x0a4, 2).expect("write ctiouten");
+
     let start = Instant::now();
     let mut count = 0;
     loop {
@@ -136,9 +140,6 @@ fn main() {
         }
 
         // resume the CPU so it can run one instruction
-        mem.write_nocheck(cti_base + 0x140, 0).expect("write ctigate");
-        mem.write_nocheck(cti_base + 0x0a4, 2).expect("write ctiouten");
         mem.write_nocheck(cti_base + 0x01c, 2).expect("write ctiouten");
-        mem.write_nocheck(cti_base + 0x010, 3).expect("write ctiouten");
     }
 }
