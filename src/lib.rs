@@ -208,7 +208,7 @@ where
     pub fn write_adi(&mut self, apsel: u32, port: Port, mut reg: u32, val: u32) -> Result<(), u8> {
         let bank = reg >> 2;
         reg &= 3;
-        self.bank_select(apsel, bank as u32, bank as u32);
+        self.bank_select(apsel, bank as u32, 0);
         self.write_adi_nobank(port, reg, val, true)
     }
 
