@@ -54,7 +54,7 @@ where
         let _ = adi.write_adi_nobank(Port::DP, DPReg::Select as u32, 0, false);
 
         // Abort any in-progress transactions
-        if let Err(4) = adi.read_adi_nobank(Port::DP, DPReg::Abort as u32) {
+        if let Err(4) = adi.write_adi_nobank(Port::DP, DPReg::Abort as u32, 1, true) {
             // Possibly ADIv6
             adi.good_ack = 4;
             let val = adi.read_adi_nobank(Port::DP, DPReg::Abort as u32).expect("abort");
