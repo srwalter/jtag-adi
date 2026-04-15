@@ -1,6 +1,6 @@
 [package]
 name = "jtag-adi"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 description = "Library for interacting with ARM Debug Interface components"
 license = "MIT"

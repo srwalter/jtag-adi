@@ -31,6 +31,29 @@ where
         }
     }
 
+    pub fn cpu_setup(&mut self) -> Result<(), u8>
+    {
+        // Clear OS lock
+        self.write_cpu(0x300, 0)?;
+
+        // Clear software lock lock
+        self.write_cpu(0xfb0, 0xC5ACCE55)?;
+
+        // Enable halting debug
+        let mut edscr = self.read_cpu(0x088)?;
+        edscr |= 1 << 14;
+        self.write_cpu(0x088, edscr)?;
+
+        //// Unlock CTI
+        self.write_cti(0xfb0, 0xC5ACCE55)?;
+
+        //// Enable CTI
+        let mut cti = self.read_cti(0)?;
+        cti |= 1;
+        self.write_cti(0, cti)
+    }
+
+
     pub fn cpu_halt(&mut self) -> Result<(), u8>
     {
         // Gate all
@@ -197,5 +220,15 @@ where
     pub fn write_cpu(&mut self, offset: u32, value: u32) -> Result<(), u8>
     {
         self.mem.write(self.cpu_base + offset, value)
+    }
+
+    pub fn read_cti(&mut self, offset: u32) -> Result<u32, u8>
+    {
+        self.mem.read(self.cti_base + offset)
+    }
+
+    pub fn write_cti(&mut self, offset: u32, value: u32) -> Result<(), u8>
+    {
+        self.mem.write(self.cti_base + offset, value)
     }
 }
