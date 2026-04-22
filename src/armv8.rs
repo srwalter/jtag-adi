@@ -163,6 +163,32 @@ where
         self.set_reg(1, orig_x1)
     }
 
+    pub fn read_special_reg(&mut self, reg: u32) -> Result<u64, u8>
+    {
+        // Uses 'mrs x0, REG' to read special registers
+        let orig_x0 = self.get_reg(0)?;
+
+        // mrs x0, REG
+        self.run_instr(0xd5200000 | (reg << 4))?;
+        let val = self.get_reg(0)?;
+
+        self.set_reg(0, orig_x0)?;
+        Ok(val)
+    }
+
+    pub fn write_special_reg(&mut self, reg: u32, val: u64) -> Result<(), u8>
+    {
+        // Uses 'msr REG, x0' to write to special registers
+        let orig_x0 = self.get_reg(0)?;
+
+        self.set_reg(0, val)?;
+        // msr REG, x0
+        self.run_instr(0xd5000000 | (reg << 4))?;
+
+        self.set_reg(0, orig_x0)
+    }
+
+
     pub fn read_cpu(&mut self, offset: u32) -> Result<u32, u8>
     {
         self.mem.read(self.cpu_base + offset)
