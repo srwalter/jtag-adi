@@ -39,9 +39,11 @@ where
         // Clear software lock lock
         self.write_cpu(0xfb0, 0xC5ACCE55)?;
 
-        // Enable halting debug
         let mut edscr = self.read_cpu(0x088)?;
+        // Enable halting debug
         edscr |= 1 << 14;
+        // Clear memory access mode
+        edscr &= !(1 << 20);
         self.write_cpu(0x088, edscr)?;
 
         //// Unlock CTI
@@ -182,6 +184,39 @@ where
             }
         }
 
+        self.set_reg(0, orig_x0)?;
+        self.set_reg(1, orig_x1)
+    }
+
+    pub fn write_mem_block(&mut self, mut addr: u64, buf: &[u8]) -> Result<(), u8>
+    {
+        let orig_x0 = self.get_reg(0)?;
+        let orig_x1 = self.get_reg(1)?;
+
+        self.set_reg(0, addr)?;
+
+        let mut edscr = self.read_cpu(0x088)?;
+        // Set memory access mode
+        edscr |= 1 << 20;
+        self.write_cpu(0x088, edscr)?;
+
+        for chunk in buf.chunks_exact(4) {
+            let mut arr = [0u8; 4];
+            arr.copy_from_slice(chunk);
+            let val = u32::from_le_bytes(arr);
+
+            self.write_cpu(0x080, val)?;
+            addr += 4;
+        }
+
+        edscr &= !(1 << 20);
+        self.write_cpu(0x088, edscr)?;
+
+        let remainder = buf.chunks_exact(4).remainder();
+        for x in remainder {
+            self.write_mem(addr, *x as u64, DataSize::Byte)?;
+            addr += 1;
+        }
         self.set_reg(0, orig_x0)?;
         self.set_reg(1, orig_x1)
     }
